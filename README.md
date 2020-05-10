@@ -28,11 +28,5 @@ Returns json from singles API.
 
 Mainly used for obtaining singleid.
 
-#### singleToText(singleid)
-
-Returns OCRed  text from single images.
-
-Currently broken because of pytesseract's weird border detection.
-
 #### jPrint(data)
 Prints parsed json.
