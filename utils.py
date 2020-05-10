@@ -1,10 +1,22 @@
-import requests, pickle, json, pytesseract
-from PIL import Image
-from io import BytesIO
+import requests
+import json
+import html
+import pickle
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+def loadAccounts():
+    return pickle.load(open('accounts', 'rb'))
 
-sessions = requests.session()
+def saveAccounts(accounts):
+    pickle.dump(accounts, open('accounts', 'wb'))
+    
+def createAccountsFile():
+    accounts = {}
+    saveAccounts(accounts)
+
+def loadAccount(accounts, account):
+    session = requests.Session()
+    session.cookies.update(accounts[account]['cookies'])
+    return session
 
 def load(input):
     with open(input + '.cjar', 'rb') as f:
@@ -17,18 +29,45 @@ def getThumbnail(url):
     return requests.get("https://dn-img-page.kakao.com/download/resource?kid=" + url).content
 
 def search(keyword):
-    buffer = requests.post("https://api2-page.kakao.com/api/v3/store/search", data={'word' : keyword})
-    return json.loads(buffer.text)["results"][0]["items"]
+    return requests.post(
+        "https://api2-page.kakao.com/api/v3/store/search",
+        data = {
+            'word' : keyword
+        }
+    ).json()["results"][0]["items"]
 
 def getSingles(seriesid, order="asc", pagesize="20", page="0"):
-    buffer = requests.post("https://api2-page.kakao.com/api/v5/store/singles", data={'seriesid' : seriesid, 'page' : page, 'page_size' : pagesize, 'direction' : order})
-    return json.loads(buffer.text)
+    return requests.post(
+        "https://api2-page.kakao.com/api/v5/store/singles",
+        data = {
+            'seriesid' : seriesid,
+            'page' : page,
+            'page_size' : pagesize,
+            'direction' : order
+        }
+    ).json()
 
-def singleToText(singleid):
-    buffer = sessions.post("https://api2-page.kakao.com/api/v1/inven/get_download_data/web", headers={'content-type' : 'application/x-www-form-urlencoded'}, data={'productId' : singleid})
-    buffer = json.loads(buffer.text)["downloadData"]["members"]
-    for i in range(1, buffer["totalCount"]):
-        return (pytesseract.image_to_string(Image.open(BytesIO(getImg(buffer["files"][i]["secureUrl"]))), lang="kor"))
+def getSingle(singleid, session):
+    return requests.get(
+        "https://api2-page.kakao.com/api/v1/inven/get_download_data/web",
+        data = {
+            'productid' : singleid,
+            'deviceid' : deviceid
+        }
+    ).json()
 
-def jPrint(data):
+def useTicket(seriesid, singleid, session):
+    print(session.post(
+        "https://api2-page.kakao.com/api/v6/store/use/ticket",
+        data = {
+            'seriesid' : seriesid,
+            'singleid' : singleid,
+            'deviceId' : '5284e8b6574185351c9af6bffed9bdb9'
+        }
+    ).json())
+
+def jsonPrint(data):
     print(json.dumps(data, indent=4, sort_keys=True))
+
+#print(html.unescape(search('4000년')[0]['title']) + ' : ' + html.unescape(search('4000년')[0]['category']))
+
