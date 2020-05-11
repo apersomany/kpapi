@@ -147,6 +147,8 @@ def randomHashGen():
     lettersAndDigits = string.ascii_lowercase + string.digits
     return ''.join((random.choice(lettersAndDigits) for i in range(32)))
 
+def getImg(self, url):
+    return requests.get("https://page-edge.kakao.com/sdownload/resource?kid="+ url).content
 def getThumbnail(url):
     return requests.get("https://dn-img-page.kakao.com/download/resource?kid=" + url).content
 
@@ -157,6 +159,15 @@ def search(keyword):
             'word' : keyword
         }
     ).json()["results"][0]["items"]
+
+def getSingle(self, singleid):
+    return requests.post(
+        "https://api2-page.kakao.com/api/v1/inven/get_download_data/web",
+        data = {
+        'productId' : '53192467',
+        'deviceId' : self.deviceId
+        }
+    ).json()['downloadData']['members']['files']
 
 def getSingles(seriesid, order="asc", pagesize="20", page="0"):
     return requests.post(
