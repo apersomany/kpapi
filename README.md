@@ -1,32 +1,68 @@
-# Function List
+# KPAPI
+KakaoPage API for python made by dissecting the KakaoPage REST API
 
-#### auth(email, password, output)
+What works
+ - Logging in
+ - Searching
+ - Ferching singles of series
+ - Fetching single download data
+ - Using tickets
+ - Fetching images
+ - Fetching thumbnails
+ 
+ TODOs
+ - [ ] Purchasing tickets
+ - [ ] Logging in with encrypted credentials (currently credentials are sent in plaintext)
+ - [ ] Saving single(s) as EPUB 
+ - [ ] Account registration
 
-Logs in with credential given and dumps session cookies to output.cjar and writes refresh token to output.rtoken.
+This is my first time ever writing a documentation for a program i've written, so it's probably shit.
 
-#### load(input)
+ ## Class account
+ ### Constuctor
+ Same as auth() method
+ 
+    account = kpapi.accounts("username@example.org", "password")
 
-Loads cookies from input.cjar file.
+ ### Methods
+#### auth(email, password, proxies=None)
+Logs in with given credentials. Not meant to be called, but invoked by the constructor.
 
-#### getImg(url)
+#### refresh()
+Refreshes session with refresh_token,
 
-Returns image fetched from 'secureUrl'.
+#### useTicket(seriesid, singleid)
+Uses ticket, returns response in json format.
+
+#### getSingle(singleid)
+Returns a list of download data. in json format
+
+    getImg(getSingle(singleid)[page]['secureUrl'])
+fetches the image of given singleid and page.
+This method will probably be renamed to getDownloadData() and be replaced with a method that returns a list of images.
+
+#### getImg(secureUrl)
+Returns image at(?) secureUrl.
+
+## Functions
+#### randomHashGen()
+Returns a random 32 character long alphanumerical string.
+Meant to be invoked by the constructor.
+
+#### getImg(secureUrl)
+Similar to the method of the account class but only works with free content.
 
 #### getThumbnail(url)
-
-Returns image fetched from 'url'.
+Returns thumbnail at url.
 
 #### search(keyword)
+Reutrns seach response in a list of jsons.
 
-Returns json from the search API.
+#### getSingle(single)
+Similar to the getSingle() method of the account class but only works with free content.
 
-Mainly used for obtaining seriesid.
+#### getSingles(seriesid, order='asc/desc' , pagesize, page)
+Returns a list of singles in json format.
 
-#### getSingles(seriesid)
-
-Returns json from singles API.
-
-Mainly used for obtaining singleid.
-
-#### jPrint(data)
-Prints parsed json.
+#### jsonPrint(json)
+Prettyprints the given json.
