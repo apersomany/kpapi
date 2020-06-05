@@ -9,11 +9,11 @@ What works
  - Using tickets
  - Fetching images
  - Fetching thumbnails
+ - Saving single(s) as EPUB 
  
  TODOs
  - [ ] Purchasing tickets
  - [ ] Logging in with encrypted credentials (currently credentials are sent in plaintext)
- - [ ] Saving single(s) as EPUB 
  - [ ] Account registration
 
 This is my first time ever writing a documentation for a program i've written, so it's probably shit.
