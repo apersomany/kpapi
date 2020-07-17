@@ -4,6 +4,43 @@ import random
 import uuid
 import time
 import os
+import warnings
+import contextlib
+from urllib3.exceptions import InsecureRequestWarning
+from pprint import pprint
+
+
+old_merge_environment_settings = requests.Session.merge_environment_settings
+
+@contextlib.contextmanager
+def no_ssl_verification():
+    opened_adapters = set()
+
+    def merge_environment_settings(self, url, proxies, stream, verify, cert):
+        # Verification happens only once per connection so we need to close
+        # all the opened adapters once we're done. Otherwise, the effects of
+        # verify=False persist beyond the end of this context manager.
+        opened_adapters.add(self.get_adapter(url))
+
+        settings = old_merge_environment_settings(self, url, proxies, stream, verify, cert)
+        settings['verify'] = False
+
+        return settings
+
+    requests.Session.merge_environment_settings = merge_environment_settings
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', InsecureRequestWarning)
+            yield
+    finally:
+        requests.Session.merge_environment_settings = old_merge_environment_settings
+
+        for adapter in opened_adapters:
+            try:
+                adapter.close()
+            except:
+                pass
 
 class account:
 
@@ -13,76 +50,103 @@ class account:
         self.auth(email, password, proxies)
             
     def auth(self, email, password, proxies):
-        self.session.get(
-            "https://track.tiara.kakao.com/queen/footsteps",
-            proxies=proxies
-        )
-    
-        self.session.get(
-            "https://accounts.kakao.com/login",
-            proxies=proxies
-        )
+        with no_ssl_verification():
+            self.session.get(
+                "https://track.tiara.kakao.com/queen/footsteps",
+                proxies=proxies
+            )
 
-        self.session.post(
-            "https://accounts.kakao.com/weblogin/authenticate.json",
-            headers = {
-                'referer' : 'https://accounts.kakao.com',
-                'content-type' : 'application/x-www-form-urlencoded'
-            },
-            data = {
-                'email' : email,
-                'password' : password
-            },
-            proxies=proxies
-        )
-        code = self.session.get(
-            "https://kauth.kakao.com/oauth/authorize",
-            params = {
-                'redirect_uri' : 'kakaojs',
-                'response_type' : 'code',
-                'client_id' : '49bbb48c5fdb0199e5da1b89de359484'
-            },
-            proxies=proxies
-        ).text.split("code: '")[1].split("'")[0]
+            self.session.post(
+                "https://accounts.kakao.com/weblogin/authenticate.json",
+                headers = {
+                    'referer' : 'https://accounts.kakao.com',
+                    'content-type' : 'application/x-www-form-urlencoded'
+                },
+                data = {
+                    'email' : email,
+                    'password' : password,
+                    'stay_signed_in' : 'true'
+                },
+                proxies=proxies
+            )
+            code = self.session.get(
+                "https://kauth.kakao.com/oauth/authorize",
+                params = {
+                    'redirect_uri' : 'kakaojs',
+                    'response_type' : 'code',
+                    'client_id' : '49bbb48c5fdb0199e5da1b89de359484'
+                },
+                proxies=proxies
+            ).text.split("code: '")[1].split("'")[0]
+            tokens = self.session.post(
+                "https://kauth.kakao.com/oauth/token",
+                headers = {
+                    'referer' : 'https://kauth.kakao.com',
+                    'content-type' : 'application/x-www-form-urlencoded'
+                },
+                data = {
+                    'grant_type' : 'authorization_code',
+                    'client_id' : '49bbb48c5fdb0199e5da1b89de359484',
+                    'code' : code
+                },
+                proxies=proxies
+            )
+
+            self.access_token = tokens.text.split('access_token":"')[1].split('"')[0]
+
+            self.refresh_token = tokens.text.split('refresh_token":"')[1].split('"')[0]
+
+            id = self.session.get(
+                'https://kapi.kakao.com/v1/user/access_token_info',
+                headers = {
+                    'Authorization' : 'Bearer ' + self.access_token
+                }
+            ).json()['id']
+
+            self.session.post(
+                'https://api2-page.kakao.com/auth/v3/web/login',
+                data = {
+                    'deviceId' : self.deviceId,
+                    'userId' : id,
+                    'accessToken' : self.access_token,
+                    'refreshToken' : self.refresh_token
+                }
+            )
+
+    def refresh(self):
 
         tokens = self.session.post(
             "https://kauth.kakao.com/oauth/token",
-            headers = {
-                'referer' : 'https://kauth.kakao.com',
-                'content-type' : 'application/x-www-form-urlencoded'
-            },
             data = {
-                'grant_type' : 'authorization_code',
+                'grant_type' : 'refresh_token',
                 'client_id' : '49bbb48c5fdb0199e5da1b89de359484',
-                'code' : code
-            },
-            proxies=proxies
-        )
+                'refresh_token' : self.refresh_token
+            }
+        ).text
 
-        self.access_token = tokens.text.split('access_token":"')[1].split('"')[0]
+        self.access_token = tokens.split('access_token":"')[1].split('"')[0]
 
-        self.refresh_token = tokens.text.split('refresh_token":"')[1].split('"')[0]
+        try:
+            self.refresh_token = tokens.split('refresh_token":"')[1].split('"')[0]
+        except:
+            print("Refresh Token Still OK")
 
-        uid = self.session.get(
-            "https://kapi.kakao.com/v2/user/me",
+        id = self.session.get(
+            'https://kapi.kakao.com/v1/user/access_token_info',
             headers = {
-                'authorization' : 'bearer ' + self.access_token
-            },
-            proxies=proxies
-        ).text.split('id":')[1].split(',')[0]
+                'Authorization' : 'Bearer ' + self.access_token
+            }
+        ).json()['id']
 
-        self.session.get(
-            "https://page.kakao.com/main",
-            params = {
-                'loginHash' : self.deviceId,
-                'uid' : uid, 'at' : self.access_token,
-                'rt' : self.refresh_token
-            },
-            headers = {
-                'referer' : 'https://page.kakao.com/main'
-            },
-            proxies=proxies
-        )
+        print(self.session.post(
+            'https://api2-page.kakao.com/auth/v3/web/login',
+            data = {
+                'deviceId' : self.deviceId,
+                'userId' : id,
+                'accessToken' : self.access_token,
+                'refreshToken' : self.refresh_token
+            }
+        ).json())
 
     def useTicket(self, seriesid, singleid):
         request = self.session.post(
@@ -93,9 +157,10 @@ class account:
                 'deviceId' : self.deviceId
             }
         ).json()
-        if(request['result_code'] == 0 or request['result_code'] == 306):
+        if(request['result_code'] == 0 or request['result_code'] == 306 or request['result_code'] == -351):
             return True
         else:
+            print(request['message'])
             return False
 
     def getDownloadData(self, singleid):
@@ -111,12 +176,12 @@ class account:
         downloadData = self.getDownloadData(singleid)
         single = []
         for i in range(firstPage, len(downloadData)):
-            single.append(self.getImg(downloadData[i]['secureUrl']), downloadData[i]['target'])
+            single.append(self.getImg(downloadData[i]['secureUrl'], 'page-edge'))
         return single
 
     def getImg(self, url, target):
         if(target == 'page-edge'): return self.session.get("https://page-edge.kakao.com/sdownload/resource?kid="+ url).content
-        if(target == 'dn-img'): return self.session.get("https://dn-img-page.kakao.com/sdownload/resource?kid="+ url).content
+        if(target == 'dn-img'): return self.session.get("https://dn-img-page.kakao.com/download/resource?kid="+ url).content
 
 def createEpubStructure(title, author="aperso", coverimg=None, cachedir="cache", overwrite=True):
     os.makedirs(cachedir, exist_ok=overwrite)
@@ -190,6 +255,7 @@ def createEpubStructure(title, author="aperso", coverimg=None, cachedir="cache",
         )
         open(cachedir + "/EPUB/cover.jpg", "wb").write(coverimg)
 
+
     open(cachedir + "/EPUB/nav.xhtml", "w").write(
         '<?xml version="1.0" encoding="EUC-KR"?>'+
         '<!DOCTYPE html>'+
@@ -236,11 +302,11 @@ def addSingleToEpub(title, single, nameinepub, cachedir="cache"):
     open(cachedir + "/EPUB/nav.xhtml", "w").write("".join(str(i) for i in nav))
 
 
-def singleToEPUB(accounts, seriesid, firstPage = 1, firstSingle = 0):
+def seriesToEPUB(accounts, seriesid, firstPage = 1, firstSingle = 0, cachedir = 'cache'):
     seriesinfo = getSeriesInfo(seriesid)
     seriessize = seriesinfo['home']['on_sale_count']
     singles = getSingles(seriesid, "asc", seriessize)['singles']
-    createEpubStructure(seriesinfo['home']['title'], seriesinfo['home']['author_name'], getThumbnail(seriesinfo['home']['image_url']))
+    createEpubStructure(seriesinfo['home']['title'], seriesinfo['home']['author_name'], getImg(seriesinfo['home']['image_url'], 'dn-img'), cachedir=cachedir)
     if(firstSingle == 0):
         if(seriesinfo['has_free_single'] == True):
             index = seriesinfo['free_single_count']
@@ -249,7 +315,7 @@ def singleToEPUB(accounts, seriesid, firstPage = 1, firstSingle = 0):
         for i in range(index):
             downloadData = getDownloadData(singles[i]['id'])
             print("Downloading " + singles[i]['title'])
-            addSingleToEpub(str(singles[i]['title']), getSingle(singles[i]['id']), str(i))
+            addSingleToEpub(str(singles[i]['title']), getSingle(singles[i]['id'], firstPage=firstPage), str(i), cachedir=cachedir)
     else:
         index = firstSingle
 
@@ -257,13 +323,13 @@ def singleToEPUB(accounts, seriesid, firstPage = 1, firstSingle = 0):
     while(index < len(singles) and i < len(accounts)):
         if(accounts[i].useTicket(seriesid, singles[index]['id'])):
             print("Downloading " + singles[index]['title'])
-            addSingleToEpub(str(singles[index]['title']), accounts[i].getSingle(singles[index]['id']), str(index))
+            addSingleToEpub(str(singles[index]['title']), accounts[i].getSingle(singles[index]['id'], firstPage=firstPage), str(index), cachedir=cachedir)
             index += 1
             time.sleep(1)
         else:
             i += 1
 
-def updateEPUB(accounts, seriesid, firstPage = 1, firstSingle=0):
+def updateEPUB(accounts, seriesid, firstPage = 1, firstSingle=0, cachedir='cache'):
     seriesinfo = getSeriesInfo(seriesid)
     seriessize = seriesinfo['home']['on_sale_count']
     singles = getSingles(seriesid, "asc", seriessize)['singles']
@@ -275,7 +341,7 @@ def updateEPUB(accounts, seriesid, firstPage = 1, firstSingle=0):
         for i in range(index):
             downloadData = getDownloadData(singles[i]['id'])
             print("Downloading " + singles[i]['title'])
-            addSingleToEpub(str(singles[i]['title']), getSingle(singles[i]['id']), str(i))
+            addSingleToEpub(str(singles[i]['title']), getSingle(singles[i]['id'], firstPage=firstPage), str(i), cachedir=cachedir)
     else:
         index = firstSingle
 
@@ -283,7 +349,7 @@ def updateEPUB(accounts, seriesid, firstPage = 1, firstSingle=0):
     while(index < len(singles) and i < len(accounts)):
         if(accounts[i].useTicket(seriesid, singles[index]['id'])):
             print("Downloading " + singles[index]['title'])
-            addSingleToEpub(str(singles[index]['title']), accounts[i].getSingle(singles[index]['id']), str(index))
+            addSingleToEpub(str(singles[index]['title']), accounts[i].getSingle(singles[index]['id'], firstPage=firstPage), str(index), cachedir=cachedir)
             index += 1
             time.sleep(1)
         else:
@@ -299,7 +365,7 @@ def randomIDGen():
 
 def getImg(url, target):
     if (target == 'page-edge'): return requests.get("https://page-edge.kakao.com/sdownload/resource?kid=" + url).content
-    if (target == 'dn-img'): return requests.get("https://dn-img-page.kakao.com/sdownload/resource?kid=" + url).content
+    if (target == 'dn-img'): return requests.get("https://dn-img-page.kakao.com/download/resource?kid=" + url).content
 
 def search(keyword):
     return requests.post(
@@ -321,7 +387,7 @@ def getSingle(singleid, firstPage=1):
     downloadData = getDownloadData(singleid)
     single = []
     for i in range(firstPage, len(downloadData)):
-        single.append(getImg(downloadData[i]['secureUrl']), downloadData[i]['target'])
+        single.append(getImg(downloadData[i]['secureUrl'], 'page-edge'))
     return single
 
 def getSingles(seriesid, order="asc", pagesize="20", page="0"):
