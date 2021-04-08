@@ -1,3 +1,5 @@
+#THIS IS OLD AND OUTDATED. AND MOST OF ALL REALLY BAD CODE.
+
 # KPAPI
 KakaoPage API for python made by dissecting the KakaoPage REST API
 
